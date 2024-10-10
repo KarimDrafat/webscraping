@@ -44,43 +44,98 @@ def check_product_details(product_url):
         return "N/A", "N/A", "N/A"
 
 ```
-Description: This function retrieves product information (name, price, and manufacturer number) from a single product page using BeautifulSoup.
-
-## 4. Extract Product Name, Price, and Manufacturer Number
-```
-soup.find('h1', class_='page-title')
-soup.find('span', class_='price')
-soup.find('div', class_='value', itemprop='sku')
-```
-Description: These lines attempt to extract specific details like the product name, price, and manufacturer number from the HTML structure. If unavailable, it returns "N/A".
-## 5. Scrape Product Details from Each Page
+Description: This function sends a request to the product URL, parses the HTML content to extract the product name, price, and manufacturer number, and returns them. If the product or price is unavailable, it returns "N/A" for those fields.
+## 4. Scrape Product Details from Each Page
 ```
 def scrape_products(soup, category, type_name, writer):
+    products = soup.find_all('div', class_='product-item-info')  # Adjust based on actual HTML structure
+    for product in products:
+        product_link = product.find('a', class_='product-item-link')['href']  # Get the product URL
+        product_name, price, manufacturer_number = check_product_details(product_link)  # Get details from the product page
+
+        # Write product details to the CSV
+        writer.writerow([product_name, category, type_name, price, manufacturer_number])
+
 ```
-Description: This function iterates through each product on a page, collects its details using the check_product_details function, and writes them to a CSV file.
-## 6. Handle Pagination for Product Types
+Description: This function iterates through the list of products on a given page, retrieves each product's details using the check_product_details function, and writes them to a CSV file.
+
+## 5. Handle Pagination for Product Types
 ```
 def scrape_type_pages(type_url, category, type_name, writer):
+    next_page_url = type_url
+    while next_page_url:
+        print(f"Scraping type page: {next_page_url}")
+        
+        response = requests.get(next_page_url, headers=headers)
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # Scrape products from the current page
+        scrape_products(soup, category, type_name, writer)
+        
+        # Find the link to the next page
+        next_page_link = soup.find('li', class_='item pages-item-next')
+        if next_page_link and next_page_link.find('a', class_='action next'):
+            next_page_url = next_page_link.find('a', class_='action next')['href']
+        else:
+            next_page_url = None
+
 ```
-Description: This function handles pagination by scraping multiple pages of products within a single type and continuing until no more pages are available.
-## 7. Scrape Types within a Category
+Description: This function handles pagination by iterating through multiple pages of products within a product type. It calls scrape_products to gather data from each page and navigates to the next page, if available.
+
+## 6. Scrape Product Types within a Category
+```def scrape_types_from_category(category_url, category_name, writer):
+    response = requests.get(category_url, headers=headers)
+    soup = BeautifulSoup(response.content, 'lxml')
+
+    # Find all types (links inside the category page)
+    type_links = soup.find_all('a', class_='category-list__link')  # Adjust the class if necessary
+
+    # Loop through each type and extract the name and URL
+    for type_link in type_links:
+        type_name = type_link.find('span').text.strip()
+        type_url = type_link['href']
+        
+        # Skip "View All" links
+        if "View All" in type_name:
+            print(f"Skipping type: {type_name}")
+            continue
+        
+        print(f"Scraping type: {type_name} in category: {category_name}")
+        scrape_type_pages(type_url, category_name, type_name, writer)
+
 ```
-def scrape_types_from_category(category_url, category_name, writer):
-```
-Description: This function extracts all types (subcategories) within a category and scrapes each type by passing it to the scrape_type_pages function.
-## 8. Scrape All Categories from the Main Page
+Description: This function scrapes all product types (or subcategories) within a given category by iterating through the type links, passing each type to scrape_type_pages, and handling "View All" links appropriately.
+
+## 7. Scrape All Categories from the Main Page
 ```
 def scrape_all_categories(baseurl):
+    response = requests.get(baseurl, headers=headers)
+    soup = BeautifulSoup(response.content, 'lxml')
+    
+    # Open CSV file to save the data
+    with open('products.csv', 'w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        # Write the header row
+        writer.writerow(['Product Name', 'Category', 'Type', 'Price', 'Manufacturer Number'])
+        
+        # Find all category-grid__list divs
+        category_divs = soup.find_all('div', class_='category-grid__list')
+
+        # Loop through each category div and extract the category name and URL
+        for div in category_divs:
+            category_name = div.find('span').text.strip()
+            category_url = div.find('a')['href']  # Find the link associated with the category
+            
+            print(f"Scraping category: {category_name}")
+            # Scrape all types and products within this category
+            scrape_types_from_category(category_url, category_name, writer)
 ```
-Description: This is the main function that scrapes the entire website by first fetching all product categories, then extracting and storing product details for each category and type in a CSV file.
-## 9. Open CSV and Write Data
-```
-with open('products.csv', 'w', newline='', encoding='utf-8') as file:
-```
-Description: Opens a CSV file and writes the header row followed by product data gathered during the scraping process.
-## 10. Execute Scraping Process
+Description: This is the main function that handles scraping the entire website. It first opens a CSV file and writes the header, then iterates through all categories, scrapes their types and products, and writes the data to the CSV.
+
+## 8. Start Scraping Process
 ```
 baseurl = 'https://www.SUPPLIER WEBSITE'
 scrape_all_categories(baseurl)
 ```
-Description: Starts the scraping process by calling the scrape_all_categories function using the base URL of the website.
+Description: The script execution begins here. The base URL is passed to scrape_all_categories, which initiates the process of scraping all categories and their respective products from the website.
+
